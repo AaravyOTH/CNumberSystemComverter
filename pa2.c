@@ -11,6 +11,214 @@
 #define ROUNDDOWN 1
 #define ROUNDTOEVEN 2
 
+unsigned long binary_to_unsigned_decimal(const char *input_string);
+long binary_to_signed_magnitude_decimal(const char *input_string);
+long binary_to_ones_complement_decimal(const char *input_string);
+long binary_to_twos_complement_decimal(const char *input_string);
+double ieee754_to_decimal(char *input, int exp, int mantissa);
+char *unsigned_decimal_to_binary(unsigned long input, unsigned int numbits);
+char *signed_decimal_to_signed_magnitude(long input, unsigned int numbits);
+char *signed_decimal_to_ones_complement(long input, unsigned int numbits);
+char *signed_decimal_to_twos_complement(long input, unsigned int numbits);
+char *decimal_to_ieee754_binary(double input, int exp_bits, int mantissa_bits, int rounding_mode);
+
+int main(void) {
+    char choice[10];
+    char numberStr[256];
+    int inputSystem, outputSystem;
+    unsigned int numbits = 0; // used for output conversion when needed
+    double dvalue = 0.0;
+    long value = 0;
+    
+    while (1) {
+        // Display input system menu.
+        printf("Select input system (or 'q'/'quit' to exit):\n");
+        printf("  1. Unsigned binary (binary digits only)\n");
+        printf("  2. Signed magnitude binary (binary digits only)\n");
+        printf("  3. One's complement binary (binary digits only)\n");
+        printf("  4. Two's complement binary (binary digits only)\n");
+        printf("  5. IEEE754 binary (exactly 32 bits required)\n");
+        printf("  6. Decimal (base 10)\n");
+        printf("Enter input system (1-6) or 'q'/'quit': ");
+        if (!fgets(choice, sizeof(choice), stdin))
+            break;
+        choice[strcspn(choice, "\n")] = '\0';
+        if (strcasecmp(choice, "q") == 0 || strcasecmp(choice, "quit") == 0) {
+            break;
+        }
+        inputSystem = atoi(choice);
+        if (inputSystem < 1 || inputSystem > 6) {
+            printf("Invalid input system. Please enter a number from 1 to 6.\n\n");
+            continue;
+        }
+        
+        // Display output system menu.
+        printf("\nSelect output system:\n");
+        printf("  1. Unsigned binary\n");
+        printf("  2. Signed magnitude binary\n");
+        printf("  3. One's complement binary\n");
+        printf("  4. Two's complement binary\n");
+        printf("  5. IEEE754 binary (32 bits output)\n");
+        printf("Enter output system (1-5): ");
+        if (!fgets(choice, sizeof(choice), stdin))
+            break;
+        choice[strcspn(choice, "\n")] = '\0';
+        outputSystem = atoi(choice);
+        if (outputSystem < 1 || outputSystem > 5) {
+            printf("Invalid output system. Please enter a number from 1 to 5.\n\n");
+            continue;
+        }
+        
+        // Prompt for the number to convert.
+        if (inputSystem >= 1 && inputSystem <= 5) {
+            if (inputSystem == 5)
+                printf("\nEnter the IEEE754 number to convert (exactly 32 binary digits): ");
+            else
+                printf("\nEnter the number to convert (binary digits only): ");
+        } else if (inputSystem == 6) {
+            printf("\nEnter the decimal number to convert: ");
+        }
+        if (!fgets(numberStr, sizeof(numberStr), stdin))
+            break;
+        numberStr[strcspn(numberStr, "\n")] = '\0';
+        
+        // Process input based on chosen system.
+        if (inputSystem >= 1 && inputSystem <= 5) {
+            // Validate that the number consists only of 0's and 1's.
+            bool valid = true;
+            for (int i = 0; numberStr[i] != '\0'; i++) {
+                if (numberStr[i] != '0' && numberStr[i] != '1') {
+                    valid = false;
+                    break;
+                }
+            }
+            if (!valid || strlen(numberStr) == 0) {
+                printf("Invalid number input. Please enter only binary digits (0 and 1).\n\n");
+                continue;
+            }
+            // For IEEE754 input, require exactly 32 bits.
+            if (inputSystem == 5 && strlen(numberStr) != 32) {
+                printf("Invalid IEEE754 input. Must be exactly 32 bits (1 sign + 8 exponent + 23 mantissa).\n\n");
+                continue;
+            }
+            // For binary-based inputs, use the length as the number of bits.
+            numbits = strlen(numberStr);
+            
+            // Convert the input string to an intermediate numeric value.
+            switch (inputSystem) {
+                case 1:
+                    value = binary_to_unsigned_decimal(numberStr);
+                    break;
+                case 2:
+                    value = binary_to_signed_magnitude_decimal(numberStr);
+                    break;
+                case 3:
+                    value = binary_to_ones_complement_decimal(numberStr);
+                    break;
+                case 4:
+                    value = binary_to_twos_complement_decimal(numberStr);
+                    break;
+                case 5:
+                    dvalue = ieee754_to_decimal(numberStr, 8, 23);
+                    if (isnan(dvalue)) {
+                        printf("Invalid IEEE754 number.\n\n");
+                        continue;
+                    }
+                    break;
+                default:
+                    printf("Unknown input system.\n\n");
+                    continue;
+            }
+        } else if (inputSystem == 6) {
+            // For decimal input, convert using strtod.
+            dvalue = strtod(numberStr, NULL);
+            // For conversions that require integer representation, we warn if there is a fractional part.
+            if (dvalue != (double)((long)dvalue) && outputSystem != 5) {
+                printf("Warning: Fractional part will be truncated for integer conversions.\n");
+            }
+            // If the output system is not IEEE754, ask for the desired bit width.
+            if (outputSystem != 5) {
+                printf("Enter the desired number of bits for the output representation: ");
+                if (!fgets(choice, sizeof(choice), stdin))
+                    break;
+                choice[strcspn(choice, "\n")] = '\0';
+                numbits = (unsigned int)atoi(choice);
+                if (numbits < 1) {
+                    printf("Invalid number of bits.\n\n");
+                    continue;
+                }
+            }
+            // Set the integer value (truncating if necessary) for conversion functions that expect a long.
+            value = (long)dvalue;
+        }
+        
+        // Convert the intermediate value to the desired output representation.
+        char *result = NULL;
+        switch (outputSystem) {
+            case 1:
+                // Unsigned binary conversion (if negative, report error).
+                if ((inputSystem == 5 || inputSystem == 6) ? (dvalue < 0) : (value < 0)) {
+                    printf("Cannot represent a negative number in an unsigned binary system.\n\n");
+                    continue;
+                }
+                if (inputSystem == 5)
+                    result = unsigned_decimal_to_binary((unsigned long)dvalue, numbits);
+                else if (inputSystem == 6)
+                    result = unsigned_decimal_to_binary((unsigned long)value, numbits);
+                else
+                    result = unsigned_decimal_to_binary((unsigned long)value, numbits);
+                break;
+            case 2:
+                if (inputSystem == 5)
+                    result = signed_decimal_to_signed_magnitude((long)dvalue, numbits);
+                else if (inputSystem == 6)
+                    result = signed_decimal_to_signed_magnitude(value, numbits);
+                else
+                    result = signed_decimal_to_signed_magnitude(value, numbits);
+                break;
+            case 3:
+                if (inputSystem == 5)
+                    result = signed_decimal_to_ones_complement((long)dvalue, numbits);
+                else if (inputSystem == 6)
+                    result = signed_decimal_to_ones_complement(value, numbits);
+                else
+                    result = signed_decimal_to_ones_complement(value, numbits);
+                break;
+            case 4:
+                if (inputSystem == 5)
+                    result = signed_decimal_to_twos_complement((long)dvalue, numbits);
+                else if (inputSystem == 6)
+                    result = signed_decimal_to_twos_complement(value, numbits);
+                else
+                    result = signed_decimal_to_twos_complement(value, numbits);
+                break;
+            case 5:
+                // For IEEE754, we use fixed parameters (8 exponent bits and 23 mantissa bits).
+                if (inputSystem == 5)
+                    result = decimal_to_ieee754_binary(dvalue, 8, 23, ROUNDTOEVEN);
+                else if (inputSystem == 6)
+                    result = decimal_to_ieee754_binary(dvalue, 8, 23, ROUNDTOEVEN);
+                else {
+                    double tmp = (double)value;
+                    result = decimal_to_ieee754_binary(tmp, 8, 23, ROUNDTOEVEN);
+                }
+                break;
+            default:
+                printf("Unknown output system.\n\n");
+                continue;
+        }
+        
+        if (result == NULL) {
+            printf("Conversion failed due to an error (memory allocation or invalid input).\n\n");
+        } else {
+            printf("Converted result: %s\n\n", result);
+            free(result);
+        }
+    }
+    
+    return 0;
+}
+
 /**
  * Part 1.1 
  * @brief Converts a binary string into its unsigned decimal value.
